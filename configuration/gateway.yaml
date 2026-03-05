@@ -1,0 +1,47 @@
+## gateway.yaml
+## Istio Gateway API — Gateway resource
+## Uses gatewayClassName: istio for Istio's Gateway API implementation
+## Compatible with Istio Ambient Mesh (no sidecar injection required)
+##
+## Prerequisites:
+##   - Kubernetes Gateway API CRDs installed:
+##       kubectl apply -f https://github.com/kubernetes-sigs/gateway-api/releases/download/v1.1.0/standard-install.yaml
+##   - Istio installed with ambient mode:
+##       istioctl install --set profile=ambient
+##   - kube-system namespace enrolled in ambient mesh:
+##       kubectl label namespace kube-system istio.io/dataplane-mode=ambient
+
+apiVersion: gateway.networking.k8s.io/v1
+kind: Gateway
+metadata:
+  name: headlamp-gateway
+  namespace: kube-system
+  annotations:
+    # Tells Istio to provision an external load balancer for this Gateway
+    networking.istio.io/service-type: LoadBalancer
+spec:
+  # Use Istio's Gateway API controller
+  gatewayClassName: istio
+
+  listeners:
+    # ── HTTP listener (redirects to HTTPS) ──────────────────────────────────
+    - name: http
+      protocol: HTTP
+      port: 80
+      allowedRoutes:
+        namespaces:
+          from: Same
+
+    # ── HTTPS listener (TLS termination) ────────────────────────────────────
+    - name: https
+      protocol: HTTPS
+      port: 443
+      tls:
+        mode: Terminate
+        certificateRefs:
+          - name: headlamp-tls       # TLS secret managed by cert-manager
+            kind: Secret
+            namespace: kube-system
+      allowedRoutes:
+        namespaces:
+          from: Same

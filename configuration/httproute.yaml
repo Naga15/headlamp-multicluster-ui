@@ -1,0 +1,64 @@
+## httproute.yaml
+## Gateway API HTTPRoute — routes traffic from the Gateway to the Headlamp service
+## Includes HTTP → HTTPS redirect and main routing rule
+
+---
+# ── HTTP → HTTPS redirect ──────────────────────────────────────────────────
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata:
+  name: headlamp-http-redirect
+  namespace: kube-system
+spec:
+  parentRefs:
+    - name: headlamp-gateway
+      namespace: kube-system
+      sectionName: http          # Binds to the HTTP (port 80) listener only
+
+  hostnames:
+    - "headlamp.example.com"     # Replace with your actual domain
+
+  rules:
+    - filters:
+        - type: RequestRedirect
+          requestRedirect:
+            scheme: https
+            statusCode: 301
+
+---
+# ── HTTPS route to Headlamp service ───────────────────────────────────────
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata:
+  name: headlamp-https-route
+  namespace: kube-system
+spec:
+  parentRefs:
+    - name: headlamp-gateway
+      namespace: kube-system
+      sectionName: https         # Binds to the HTTPS (port 443) listener only
+
+  hostnames:
+    - "headlamp.example.com"     # Replace with your actual domain
+
+  rules:
+    # ── Main route: forward all traffic to Headlamp ────────────────────────
+    - matches:
+        - path:
+            type: PathPrefix
+            value: /
+      backendRefs:
+        - name: my-headlamp      # Must match the Helm release service name
+          namespace: kube-system
+          port: 80
+      filters:
+        # Add security headers
+        - type: ResponseHeaderModifier
+          responseHeaderModifier:
+            add:
+              - name: X-Frame-Options
+                value: SAMEORIGIN
+              - name: X-Content-Type-Options
+                value: nosniff
+              - name: Strict-Transport-Security
+                value: "max-age=31536000; includeSubDomains"

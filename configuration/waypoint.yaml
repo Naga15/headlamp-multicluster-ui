@@ -1,0 +1,58 @@
+## waypoint.yaml
+## Istio Ambient Mesh — Waypoint Proxy for L7 policy enforcement
+##
+## In Ambient Mesh:
+##   - ztunnel handles L4 mTLS transparently (no sidecar)
+##   - Waypoint proxy handles L7 policies (AuthorizationPolicy, traffic management)
+##
+## Deploy a waypoint for the kube-system namespace to enforce
+## L7 AuthorizationPolicy on Headlamp traffic.
+
+---
+# ── Waypoint proxy for kube-system namespace ──────────────────────────────
+apiVersion: gateway.networking.k8s.io/v1
+kind: Gateway
+metadata:
+  name: waypoint
+  namespace: kube-system
+  labels:
+    istio.io/waypoint-for: service   # Intercepts all service traffic in this namespace
+  annotations:
+    istio.io/waypoint-for: service
+spec:
+  gatewayClassName: istio-waypoint
+  listeners:
+    - name: mesh
+      port: 15008
+      protocol: HBONE               # Ambient mesh transport protocol
+
+---
+# ── Label the namespace to enroll in Ambient Mesh ─────────────────────────
+# Run: kubectl label namespace kube-system istio.io/dataplane-mode=ambient
+# Run: kubectl label namespace kube-system istio.io/use-waypoint=waypoint
+
+---
+# ── AuthorizationPolicy: restrict Headlamp access ─────────────────────────
+# Only allow traffic from within the mesh (authenticated via mTLS)
+# Enforced at the waypoint proxy level — no sidecar needed
+apiVersion: security.istio.io/v1beta1
+kind: AuthorizationPolicy
+metadata:
+  name: headlamp-authz
+  namespace: kube-system
+spec:
+  targetRefs:
+    - kind: Service
+      group: ""
+      name: my-headlamp
+  action: ALLOW
+  rules:
+    - from:
+        - source:
+            # Allow traffic only from the Istio ingress gateway
+            principals:
+              - "cluster.local/ns/kube-system/sa/my-headlamp"
+              - "cluster.local/ns/istio-system/sa/istio-ingressgateway-service-account"
+      to:
+        - operation:
+            ports: ["80"]

@@ -1,0 +1,53 @@
+## xlistenerset.yaml
+## Gateway API XListenerSet — experimental resource for distributed listener ownership
+##
+## Use this INSTEAD of the inline listeners in gateway.yaml when:
+##   - Multiple teams share a single Gateway
+##   - Listeners are managed from different namespaces
+##   - Platform team owns the Gateway; app teams own listeners
+##
+## Prerequisites:
+##   Install experimental Gateway API CRDs (includes XListenerSet):
+##     kubectl apply -f https://github.com/kubernetes-sigs/gateway-api/releases/download/v1.1.0/experimental-install.yaml
+##
+## If using this file:
+##   1. Update gateway.yaml to have: listeners: []  (empty — no inline listeners)
+##   2. Apply this file after gateway.yaml
+##   3. httproute.yaml remains unchanged
+
+apiVersion: gateway.networking.k8s.io/v1alpha2
+kind: XListenerSet
+metadata:
+  name: headlamp-listeners
+  namespace: kube-system
+  labels:
+    app.kubernetes.io/part-of: headlamp
+spec:
+  parentRef:
+    name: headlamp-gateway        # Must match Gateway name in gateway.yaml
+    namespace: kube-system
+    kind: Gateway
+    group: gateway.networking.k8s.io
+
+  listeners:
+    # ── HTTP listener: redirects all traffic to HTTPS ────────────────────
+    - name: http
+      protocol: HTTP
+      port: 80
+      allowedRoutes:
+        namespaces:
+          from: Same
+
+    # ── HTTPS listener: TLS termination via cert-manager secret ──────────
+    - name: https
+      protocol: HTTPS
+      port: 443
+      tls:
+        mode: Terminate
+        certificateRefs:
+          - name: headlamp-tls    # Must match Certificate secretName in certificate.yaml
+            kind: Secret
+            namespace: kube-system
+      allowedRoutes:
+        namespaces:
+          from: Same

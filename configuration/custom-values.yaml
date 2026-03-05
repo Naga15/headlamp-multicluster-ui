@@ -1,0 +1,73 @@
+## custom-values.yaml
+## Headlamp Helm overrides for multi-cluster + OIDC + Ambient Mesh
+
+replicaCount: 1
+
+image:
+  repository: ghcr.io/kubernetes-sigs/headlamp
+  pullPolicy: IfNotPresent
+
+# -- Disable built-in ingress; we use Istio Gateway API instead
+ingress:
+  enabled: false
+
+service:
+  type: ClusterIP
+  port: 80
+
+# -- OIDC configuration (replace with your IdP values)
+# Headlamp will use OIDC for authentication — no more manual token pasting
+env:
+  - name: HEADLAMP_CONFIG_OIDC_CLIENT_ID
+    valueFrom:
+      secretKeyRef:
+        name: headlamp-oidc
+        key: clientId
+  - name: HEADLAMP_CONFIG_OIDC_CLIENT_SECRET
+    valueFrom:
+      secretKeyRef:
+        name: headlamp-oidc
+        key: clientSecret
+  - name: HEADLAMP_CONFIG_OIDC_ISSUER_URL
+    value: "https://your-idp.example.com"           # e.g. Keycloak / Azure AD / Okta
+  - name: HEADLAMP_CONFIG_OIDC_SCOPES
+    value: "openid,profile,email,groups"
+
+# -- Mount multiple kubeconfig files for multi-cluster support
+# Each kubeconfig represents a different cluster
+volumeMounts:
+  - name: kubeconfigs
+    mountPath: /home/headlamp/.config/Headlamp/kubeconfigs
+    readOnly: true
+
+volumes:
+  - name: kubeconfigs
+    secret:
+      secretName: headlamp-kubeconfigs
+      items:
+        - key: cluster-prod
+          path: cluster-prod
+        - key: cluster-staging
+          path: cluster-staging
+        - key: cluster-dev
+          path: cluster-dev
+
+# -- Env var to load all kubeconfigs at once (colon-separated paths)
+extraEnv:
+  - name: KUBECONFIG
+    value: "/home/headlamp/.config/Headlamp/kubeconfigs/cluster-prod:\
+/home/headlamp/.config/Headlamp/kubeconfigs/cluster-staging:\
+/home/headlamp/.config/Headlamp/kubeconfigs/cluster-dev"
+
+# -- Pod annotations: opt-in to Istio Ambient Mesh (no sidecar injection needed)
+podAnnotations:
+  ambient.istio.io/redirection: "enabled"
+
+# -- Resource limits
+resources:
+  requests:
+    cpu: 100m
+    memory: 128Mi
+  limits:
+    cpu: 500m
+    memory: 512Mi
